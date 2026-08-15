@@ -39,9 +39,7 @@ export default function LoginPage() {
   return (
     <div className="auth">
       <h1>Internal Portal</h1>
-      <p className="muted" style={{ marginBottom: 16 }}>
-        Login
-      </p>
+      <p className="muted">Login to your account</p>
 
       <form onSubmit={onSubmit}>
         {error ? <p className="error">{error}</p> : null}

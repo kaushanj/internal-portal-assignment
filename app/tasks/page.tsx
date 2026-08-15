@@ -23,9 +23,13 @@ export default function TasksPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
+  const [drawerMode, setDrawerMode] = useState<"create" | "edit" | null>(
+    null
+  );
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [formTitle, setFormTitle] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formStatus, setFormStatus] = useState("TODO");
 
   async function load() {
     setError("");
@@ -57,16 +61,14 @@ export default function TasksPage() {
     event.preventDefault();
     setSaving(true);
     setError("");
-    const form = event.currentTarget;
-    const data = new FormData(form);
 
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: data.get("title"),
-        description: data.get("description"),
-        status: data.get("status") || "TODO",
+        title: formTitle,
+        description: formDescription,
+        status: formStatus,
       }),
     });
 
@@ -78,8 +80,8 @@ export default function TasksPage() {
       return;
     }
 
-    form.reset();
     setTasks((prev) => [json.task, ...prev]);
+    closeDrawer();
   }
 
   async function onStatusChange(id: string, status: string) {
@@ -98,28 +100,52 @@ export default function TasksPage() {
   }
 
   function startEdit(task: Task) {
-    setEditingId(task.id);
-    setEditTitle(task.title);
-    setEditDescription(task.description);
+    setSelectedTaskId(task.id);
+    setFormTitle(task.title);
+    setFormDescription(task.description);
+    setFormStatus(task.status);
+    setDrawerMode("edit");
   }
 
-  async function saveEdit(id: string) {
+  function startCreate() {
+    setSelectedTaskId(null);
+    setFormTitle("");
+    setFormDescription("");
+    setFormStatus("TODO");
+    setDrawerMode("create");
+  }
+
+  function closeDrawer() {
+    if (saving) return;
+    setDrawerMode(null);
+    setSelectedTaskId(null);
+  }
+
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTaskId) return;
+
+    setSaving(true);
     setError("");
-    const res = await fetch(`/api/tasks/${id}`, {
+    const res = await fetch(`/api/tasks/${selectedTaskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: editTitle,
-        description: editDescription,
+        title: formTitle,
+        description: formDescription,
+        status: formStatus,
       }),
     });
     const json = await res.json();
+    setSaving(false);
     if (!res.ok) {
       setError(json.error || "Could not update task.");
       return;
     }
-    setTasks((prev) => prev.map((t) => (t.id === id ? json.task : t)));
-    setEditingId(null);
+    setTasks((prev) =>
+      prev.map((task) => (task.id === selectedTaskId ? json.task : task))
+    );
+    closeDrawer();
   }
 
   async function onDelete(id: string) {
@@ -165,124 +191,174 @@ export default function TasksPage() {
       <main>
         {error ? <p className="error">{error}</p> : null}
 
-        <div className="box">
-          <h2>Add task</h2>
-          <form onSubmit={onCreate}>
-            <div className="form-grid">
-              <label>
-                Title
-                <input name="title" required />
-              </label>
-              <label>
-                Status
-                <select name="status" defaultValue="TODO">
-                  <option value="TODO">TODO</option>
-                  <option value="IN_PROGRESS">IN_PROGRESS</option>
-                  <option value="DONE">DONE</option>
-                </select>
-              </label>
-              <label className="full">
-                Description
-                <textarea name="description" />
-              </label>
-            </div>
-            <button className="success" type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Add task"}
-            </button>
-          </form>
+        <div className="page-heading">
+          <div>
+            <h1>Tasks</h1>
+            <p className="muted">{tasks.length} total</p>
+          </div>
+          <button type="button" onClick={startCreate}>
+            Create task
+          </button>
         </div>
 
         <div className="box">
-          <h2>
-            My tasks <span className="count">({tasks.length})</span>
-          </h2>
           {tasks.length === 0 ? (
-            <p className="muted">No tasks yet.</p>
+            <div className="empty-state">
+              <p>No tasks yet.</p>
+              <button type="button" onClick={startCreate}>
+                Create your first task
+              </button>
+            </div>
           ) : (
-            tasks.map((task) => (
-            <div className={`task ${task.status}`} key={task.id}>
-                {editingId === task.id ? (
-                  <>
-                    <label>
-                      Title
-                      <input
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Description
-                      <textarea
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.target.value)}
-                      />
-                    </label>
-                    <div className="actions">
-                      <button type="button" onClick={() => saveEdit(task.id)}>
-                        Save
-                      </button>
-                      <button
-                        className="secondary"
-                        type="button"
-                        onClick={() => setEditingId(null)}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th className="actions-column">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((task) => (
+                    <tr key={task.id}>
+                      <td className="title-cell" title={task.title}>
+                        {task.title}
+                      </td>
+                      <td
+                        className="description-cell"
+                        title={task.description || undefined}
                       >
-                        Cancel
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="task-title">
-                      <strong>{task.title}</strong>
-                      <span className={`status ${task.status}`}>
-                        {task.status}
-                      </span>
-                    </div>
-
-                    {task.description ? (
-                      <p className="task-desc">{task.description}</p>
-                    ) : null}
-
-                    <div className="task-bottom">
-                      <label>
-                        Status
+                        {task.description || "—"}
+                      </td>
+                      <td>
                         <select
-                          className="inline"
+                          className="table-status"
+                          aria-label={`Status for ${task.title}`}
                           value={task.status}
-                          onChange={(e) =>
-                            onStatusChange(task.id, e.target.value)
+                          onChange={(event) =>
+                            onStatusChange(task.id, event.target.value)
                           }
                         >
-                          <option value="TODO">TODO</option>
-                          <option value="IN_PROGRESS">IN_PROGRESS</option>
-                          <option value="DONE">DONE</option>
+                          <option value="TODO">To do</option>
+                          <option value="IN_PROGRESS">In progress</option>
+                          <option value="DONE">Done</option>
                         </select>
-                      </label>
-
-                      <div className="actions">
-                        <button
-                          className="secondary"
-                          type="button"
-                          onClick={() => startEdit(task)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="danger"
-                          type="button"
-                          onClick={() => onDelete(task.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            ))
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            className="text-button"
+                            type="button"
+                            onClick={() => startEdit(task)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="text-button delete"
+                            type="button"
+                            onClick={() => onDelete(task.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </main>
+
+      {drawerMode ? (
+        <div className="drawer-layer">
+          <button
+            className="drawer-backdrop"
+            type="button"
+            aria-label="Close task panel"
+            onClick={closeDrawer}
+          />
+          <aside className="drawer" aria-label={`${drawerMode} task`}>
+            <div className="drawer-header">
+              <div>
+                <h2>{drawerMode === "create" ? "Create task" : "Edit task"}</h2>
+                <p className="muted">
+                  {drawerMode === "create"
+                    ? "Add a task to your list."
+                    : "Update the task details."}
+                </p>
+              </div>
+              <button
+                className="close-button"
+                type="button"
+                aria-label="Close"
+                onClick={closeDrawer}
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              className="drawer-form"
+              onSubmit={drawerMode === "create" ? onCreate : saveEdit}
+            >
+              <div>
+                <label>
+                  Title
+                  <input
+                    value={formTitle}
+                    onChange={(event) => setFormTitle(event.target.value)}
+                    required
+                    autoFocus
+                  />
+                </label>
+
+                <label>
+                  Description
+                  <textarea
+                    value={formDescription}
+                    onChange={(event) =>
+                      setFormDescription(event.target.value)
+                    }
+                  />
+                </label>
+
+                <label>
+                  Status
+                  <select
+                    value={formStatus}
+                    onChange={(event) => setFormStatus(event.target.value)}
+                  >
+                    <option value="TODO">To do</option>
+                    <option value="IN_PROGRESS">In progress</option>
+                    <option value="DONE">Done</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="drawer-actions">
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={closeDrawer}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={saving}>
+                  {saving
+                    ? "Saving..."
+                    : drawerMode === "create"
+                      ? "Create task"
+                      : "Save changes"}
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
     </>
   );
 }
