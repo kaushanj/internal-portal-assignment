@@ -90,5 +90,5 @@ No UI library. Enough styling to be usable without adding extra dependencies.
 
 ## Part 2
 
-See [TASK 2 - Design the Next Integration.pdf](./TASK%202%20-%20Design%20the%20Next%20Integration.pdf) for the process flow map and sprint plan.
+See [Task_2.pdf](./Task_2.pdf) for the process flow map and sprint plan.
 
