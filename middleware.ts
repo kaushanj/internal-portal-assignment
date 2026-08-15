@@ -15,7 +15,6 @@ export async function middleware(request: NextRequest) {
 
   const session = await getSessionFromRequest(request);
 
-  // Protect task endpoints
   if (!session && pathname.startsWith("/tasks")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

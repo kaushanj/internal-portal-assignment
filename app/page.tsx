@@ -1,8 +1,7 @@
-export default function HomePage() {
-  return (
-    <main style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
-      <h1>Internal Portal</h1>
-      <p>Test</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
+
+export default async function HomePage() {
+  const session = await getSession();
+  redirect(session ? "/tasks" : "/login");
 }
