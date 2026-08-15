@@ -1,20 +1,18 @@
-import { TaskStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, unauthorized } from "@/lib/auth";
-import {
-  taskRepository,
-  type UpdateTaskInput,
-} from "@/lib/repositories/task.repository";
+import { assertSafeMutation } from "@/lib/csrf";
+import { taskRepository } from "@/lib/repositories/task.repository";
+import { updateTaskSchema } from "@/lib/validators/task";
+import { validationError } from "@/lib/validators/common";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-function isTaskStatus(value: string): value is TaskStatus {
-  return Object.values(TaskStatus).includes(value as TaskStatus);
-}
-
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  const csrfError = assertSafeMutation(request);
+  if (csrfError) return csrfError;
+
   const session = await getSession();
   if (!session) return unauthorized();
 
@@ -26,46 +24,23 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   try {
     const body = await request.json();
-    const data: UpdateTaskInput = {};
+    const parsed = updateTaskSchema.safeParse(body);
 
-    if (body.title !== undefined) {
-      const title = String(body.title).trim();
-      if (!title) {
-        return NextResponse.json(
-          { error: "Title cannot be empty." },
-          { status: 400 }
-        );
-      }
-      data.title = title;
+    if (!parsed.success) {
+      return validationError(parsed.error);
     }
 
-    if (body.description !== undefined) {
-      data.description = String(body.description).trim();
-    }
-
-    if (body.status !== undefined) {
-      const status = String(body.status);
-      if (!isTaskStatus(status)) {
-        return NextResponse.json(
-          { error: "Invalid task status." },
-          { status: 400 }
-        );
-      }
-      data.status = status;
-    }
-
-    if (Object.keys(data).length === 0) {
-      return NextResponse.json({ error: "No changes provided." }, { status: 400 });
-    }
-
-    const updatedTask = await taskRepository.update(id, data);
+    const updatedTask = await taskRepository.update(id, parsed.data);
     return NextResponse.json({ task: updatedTask });
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  const csrfError = assertSafeMutation(request);
+  if (csrfError) return csrfError;
+
   const session = await getSession();
   if (!session) return unauthorized();
 

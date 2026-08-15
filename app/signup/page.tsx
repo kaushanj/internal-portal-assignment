@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -15,9 +16,9 @@ export default function SignupPage() {
     setLoading(true);
 
     const form = new FormData(event.currentTarget);
-    const res = await fetch("/api/auth/signup", {
+    const res = await apiFetch("/api/auth/signup", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      skipCsrf: true,
       body: JSON.stringify({
         name: form.get("name"),
         email: form.get("email"),

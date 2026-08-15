@@ -2,30 +2,21 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-type Task = {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-};
-
-type User = {
-  id: string;
-  name: string;
-  email: string;
-};
+import { apiFetch } from "@/lib/api";
+import { AppHeader } from "./components/AppHeader";
+import { TaskDrawer } from "./components/TaskDrawer";
+import { TasksTable } from "./components/TasksTable";
+import type { DrawerMode, Task, User } from "./types";
 
 export default function TasksPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [drawerMode, setDrawerMode] = useState<"create" | "edit" | null>(
-    null
-  );
+  const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formDescription, setFormDescription] = useState("");
@@ -33,7 +24,7 @@ export default function TasksPage() {
 
   async function load() {
     setError("");
-    const meRes = await fetch("/api/auth/me");
+    const meRes = await apiFetch("/api/auth/me");
     if (!meRes.ok) {
       router.push("/login");
       return;
@@ -41,7 +32,7 @@ export default function TasksPage() {
     const meData = await meRes.json();
     setUser(meData.user);
 
-    const tasksRes = await fetch("/api/tasks");
+    const tasksRes = await apiFetch("/api/tasks");
     const tasksData = await tasksRes.json();
     if (!tasksRes.ok) {
       setError(tasksData.error || "Could not load tasks.");
@@ -57,14 +48,25 @@ export default function TasksPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccess(""), 2500);
+    return () => clearTimeout(timer);
+  }, [success]);
+
+  function showSuccess(message: string) {
+    setError("");
+    setSuccess(message);
+  }
+
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setSuccess("");
 
-    const res = await fetch("/api/tasks", {
+    const res = await apiFetch("/api/tasks", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: formTitle,
         description: formDescription,
@@ -81,14 +83,15 @@ export default function TasksPage() {
     }
 
     setTasks((prev) => [json.task, ...prev]);
-    closeDrawer();
+    closeDrawer(true);
+    showSuccess("Task created.");
   }
 
   async function onStatusChange(id: string, status: string) {
     setError("");
-    const res = await fetch(`/api/tasks/${id}`, {
+    setSuccess("");
+    const res = await apiFetch(`/api/tasks/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
     const json = await res.json();
@@ -96,7 +99,8 @@ export default function TasksPage() {
       setError(json.error || "Could not update status.");
       return;
     }
-    setTasks((prev) => prev.map((t) => (t.id === id ? json.task : t)));
+    setTasks((prev) => prev.map((task) => (task.id === id ? json.task : task)));
+    showSuccess("Task status updated.");
   }
 
   function startEdit(task: Task) {
@@ -115,8 +119,8 @@ export default function TasksPage() {
     setDrawerMode("create");
   }
 
-  function closeDrawer() {
-    if (saving) return;
+  function closeDrawer(force = false) {
+    if (saving && !force) return;
     setDrawerMode(null);
     setSelectedTaskId(null);
   }
@@ -127,9 +131,9 @@ export default function TasksPage() {
 
     setSaving(true);
     setError("");
-    const res = await fetch(`/api/tasks/${selectedTaskId}`, {
+    setSuccess("");
+    const res = await apiFetch(`/api/tasks/${selectedTaskId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: formTitle,
         description: formDescription,
@@ -145,23 +149,26 @@ export default function TasksPage() {
     setTasks((prev) =>
       prev.map((task) => (task.id === selectedTaskId ? json.task : task))
     );
-    closeDrawer();
+    closeDrawer(true);
+    showSuccess("Task updated.");
   }
 
   async function onDelete(id: string) {
     if (!confirm("Delete this task?")) return;
     setError("");
-    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    setSuccess("");
+    const res = await apiFetch(`/api/tasks/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const json = await res.json();
       setError(json.error || "Could not delete task.");
       return;
     }
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    setTasks((prev) => prev.filter((task) => task.id !== id));
+    showSuccess("Task deleted.");
   }
 
   async function onLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await apiFetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
   }
@@ -176,20 +183,11 @@ export default function TasksPage() {
 
   return (
     <>
-      <header className="header">
-        <div className="header-inner">
-          <h1>Internal Portal</h1>
-          <div>
-            <span className="who">{user?.name}</span>{" "}
-            <button className="light" type="button" onClick={onLogout}>
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader userName={user?.name} onLogout={onLogout} />
 
       <main>
         {error ? <p className="error">{error}</p> : null}
+        {success ? <p className="success">{success}</p> : null}
 
         <div className="page-heading">
           <div>
@@ -201,163 +199,28 @@ export default function TasksPage() {
           </button>
         </div>
 
-        <div className="box">
-          {tasks.length === 0 ? (
-            <div className="empty-state">
-              <p>No tasks yet.</p>
-              <button type="button" onClick={startCreate}>
-                Create your first task
-              </button>
-            </div>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Description</th>
-                    <th>Status</th>
-                    <th className="actions-column">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((task) => (
-                    <tr key={task.id}>
-                      <td className="title-cell" title={task.title}>
-                        {task.title}
-                      </td>
-                      <td
-                        className="description-cell"
-                        title={task.description || undefined}
-                      >
-                        {task.description || "—"}
-                      </td>
-                      <td>
-                        <select
-                          className="table-status"
-                          aria-label={`Status for ${task.title}`}
-                          value={task.status}
-                          onChange={(event) =>
-                            onStatusChange(task.id, event.target.value)
-                          }
-                        >
-                          <option value="TODO">To do</option>
-                          <option value="IN_PROGRESS">In progress</option>
-                          <option value="DONE">Done</option>
-                        </select>
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            className="text-button"
-                            type="button"
-                            onClick={() => startEdit(task)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="text-button delete"
-                            type="button"
-                            onClick={() => onDelete(task.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <TasksTable
+          tasks={tasks}
+          onCreate={startCreate}
+          onEdit={startEdit}
+          onDelete={onDelete}
+          onStatusChange={onStatusChange}
+        />
       </main>
 
       {drawerMode ? (
-        <div className="drawer-layer">
-          <button
-            className="drawer-backdrop"
-            type="button"
-            aria-label="Close task panel"
-            onClick={closeDrawer}
-          />
-          <aside className="drawer" aria-label={`${drawerMode} task`}>
-            <div className="drawer-header">
-              <div>
-                <h2>{drawerMode === "create" ? "Create task" : "Edit task"}</h2>
-                <p className="muted">
-                  {drawerMode === "create"
-                    ? "Add a task to your list."
-                    : "Update the task details."}
-                </p>
-              </div>
-              <button
-                className="close-button"
-                type="button"
-                aria-label="Close"
-                onClick={closeDrawer}
-              >
-                ×
-              </button>
-            </div>
-
-            <form
-              className="drawer-form"
-              onSubmit={drawerMode === "create" ? onCreate : saveEdit}
-            >
-              <div>
-                <label>
-                  Title
-                  <input
-                    value={formTitle}
-                    onChange={(event) => setFormTitle(event.target.value)}
-                    required
-                    autoFocus
-                  />
-                </label>
-
-                <label>
-                  Description
-                  <textarea
-                    value={formDescription}
-                    onChange={(event) =>
-                      setFormDescription(event.target.value)
-                    }
-                  />
-                </label>
-
-                <label>
-                  Status
-                  <select
-                    value={formStatus}
-                    onChange={(event) => setFormStatus(event.target.value)}
-                  >
-                    <option value="TODO">To do</option>
-                    <option value="IN_PROGRESS">In progress</option>
-                    <option value="DONE">Done</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="drawer-actions">
-                <button
-                  className="secondary"
-                  type="button"
-                  onClick={closeDrawer}
-                >
-                  Cancel
-                </button>
-                <button type="submit" disabled={saving}>
-                  {saving
-                    ? "Saving..."
-                    : drawerMode === "create"
-                      ? "Create task"
-                      : "Save changes"}
-                </button>
-              </div>
-            </form>
-          </aside>
-        </div>
+        <TaskDrawer
+          mode={drawerMode}
+          saving={saving}
+          title={formTitle}
+          description={formDescription}
+          status={formStatus}
+          onTitleChange={setFormTitle}
+          onDescriptionChange={setFormDescription}
+          onStatusChange={setFormStatus}
+          onClose={() => closeDrawer()}
+          onSubmit={drawerMode === "create" ? onCreate : saveEdit}
+        />
       ) : null}
     </>
   );

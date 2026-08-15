@@ -189,6 +189,14 @@ button.light:hover {
   color: #b91c1c;
 }
 
+.success {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #ecfdf5;
+  color: #047857;
+}
+
 .muted {
   margin: 0;
   color: #6b7280;
